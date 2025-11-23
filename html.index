@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>세계 경제 지도</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        /* 지도 SVG의 특정 국가를 위한 스타일 */
+        .country-path {
+            stroke: #6b7280; /* 국가 경계선 색상 */
+            stroke-width: 0.5;
+            fill: #d1d5db; /* 기본 국가 색상 */
+            transition: fill 0.3s ease;
+        }
+        /* 상위 30개국에 대한 스타일 */
+        .top-country {
+            fill: #a5b4fc; /* 상위 30개국 기본 색상 */
+            cursor: pointer;
+        }
+        .top-country:hover, .active-country {
+            fill: #6366f1; /* 호버 또는 활성화 시 색상 */
+        }
+        /* 사이드바 목록 호버 효과 */
+        .country-list-item:hover, .country-list-item:focus {
+            background-color: #e0e7ff;
+            outline: none;
+        }
+        .active-list-item {
+            background-color: #c7d2fe;
+            font-weight: bold;
+        }
+        /* 정렬 버튼 스타일 */
+        .sort-btn {
+            padding: 4px 10px;
+            border-radius: 8px;
+            background-color: #f3f4f6;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+        }
+        .sort-btn:hover {
+            background-color: #e5e7eb;
+        }
+        .sort-btn.active {
+            background-color: #4f46e5;
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+
+        /* 모바일 툴팁 스크롤을 위한 스타일 추가 */
+        @media (max-width: 767px) {
+            #tooltip {
+                max-height: 80vh; /* 화면 높이의 80%를 최대 높이로 설정 */
+                display: flex;
+                flex-direction: column;
+            }
+            #tooltip-content {
+                overflow-y: auto; /* 내용이 넘칠 경우 세로 스크롤 생성 */
+                padding-right: 0.5rem; /* 스크롤바 공간 확보 */
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-indigo-700">세계 경제 지도: Top 30</h1>
+            <p class="text-base sm:text-lg text-gray-600 mt-2">지도 또는 오른쪽 목록에서 국가를 클릭하여 상세 정보를 확인하세요.</p>
+        </header>
+
+        <div class="flex flex-col md:flex-row gap-8">
+            <!-- 지도 영역 -->
+            <main class="w-full md:w-3/4 bg-white rounded-lg shadow-lg p-4 overflow-hidden">
+                <div id="map-container" class="relative w-full h-full min-h-[45vh] md:min-h-[600px]">
+                    <!-- World Map SVG will be loaded here by JavaScript -->
+                    <div id="map-placeholder" class="flex items-center justify-center h-full">
+                        <p class="text-gray-500">지도를 불러오는 중입니다...</p>
+                    </div>
+                    <!-- 정보 말풍선/모달 -->
+                    <div id="tooltip" class="hidden absolute bg-white bg-opacity-95 border-2 border-indigo-400 rounded-xl shadow-2xl p-6 w-full max-w-sm text-sm transition-all duration-300 transform">
+                        <button id="close-tooltip" class="absolute top-3 right-4 text-2xl font-bold text-gray-600 hover:text-red-500">&times;</button>
+                        <div id="tooltip-content"></div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 국가 목록 사이드바 -->
+            <aside class="w-full md:w-1/4 bg-white rounded-lg shadow-lg p-4 md:p-6">
+                <h2 class="text-2xl font-bold mb-2 border-b-2 pb-2 border-indigo-200">경제 대국 30</h2>
+                <!-- Sort controls -->
+                <div id="sort-container" class="my-3 flex items-center gap-2 flex-wrap">
+                    <span class="font-semibold text-sm">정렬:</span>
+                    <button data-sort="rank" class="sort-btn active">순위</button>
+                    <button data-sort="gdp" class="sort-btn">GDP</button>
+                    <button data-sort="population" class="sort-btn">인구</button>
+                    <button data-sort="military" class="sort-btn">군사력</button>
+                </div>
+                <ul id="country-list" class="space-y-1 overflow-y-auto max-h-[60vh] md:max-h-[550px]">
+                    <!-- Country list will be populated by JavaScript -->
+                </ul>
+            </aside>
+        </div>
+    </div>
+
+<script>
+// 데이터는 최신 통계(2023-2024년 기준 추정치)를 기반으로 하며, 실제와 다소 차이가 있을 수 있습니다.
+// 국가 ID는 SVG 지도 데이터의 ID와 일치해야 합니다.
+const countryData = {
+    "US": { name: "미국", continent: "북아메리카", population: "3억 3,999만", gdp: "27조 9,740억 달러", gni: "28조 3,460억 달러", gni_per_capita: "83,060 달러", debt: "34조 달러", industry: "기술(빅테크), 금융, 서비스, 항공우주, 바이오", military_rank: 1, weakness: "높은 국가 부채, 정치적 양극화, 소득 불평등", strength_long: "달러 기축통화 지위, 세계 최고 수준의 연구개발(R&D) 인프라", strength_critical: "압도적인 기술 혁신 능력 및 자본 시장", strength_powerful: "글로벌 표준을 주도하는 기술 및 군사력", relation_us: "자국", relation_cn: "적대적" },
+    "CN": { name: "중국", continent: "아시아", population: "14억 2,517만", gdp: "18조 5,660억 달러", gni: "18조 3,110억 달러", gni_per_capita: "12,850 달러", debt: "14조 달러 (공식)", industry: "제조업(세계의 공장), 전자상거래, AI, 전기차", military_rank: 2, weakness: "부동산 버블, 인구 감소 및 고령화, 미중 기술 패권 경쟁", strength_long: "거대한 내수 시장과 강력한 정부 주도 제조업 육성", strength_critical: "세계 최대의 공급망 및 제조 능력", strength_powerful: "규모의 경제를 바탕으로 한 생산력", relation_us: "적대적", relation_cn: "자국" },
+    "DE": { name: "독일", continent: "유럽", population: "8,407만", gdp: "4조 7,000억 달러", gni: "4조 8,230억 달러", gni_per_capita: "57,720 달러", debt: "2조 6,000억 유로", industry: "자동차, 기계, 화학, 정밀 공학 (히든챔피언)", military_rank: 19, weakness: "에너지 수입 의존도, 경직된 노동 시장, 고령화", strength_long: "장인정신 기반의 고품질 제조업 (마이스터 제도)", strength_critical: "중소기업(미텔슈탄트) 중심의 탄탄한 제조업 생태계", strength_powerful: "세계 최고 수준의 자동차 및 정밀기계 기술", relation_us: "우호적", relation_cn: "복합적" },
+    "JP": { name: "일본", continent: "아시아", population: "1억 2,263만", gdp: "4조 2,910억 달러", gni: "4조 5,230억 달러", gni_per_capita: "36,880 달러", debt: "GDP의 260% 이상", industry: "자동차, 로봇, 소재·부품·장비, 전자, 게임/콘텐츠", military_rank: 7, weakness: "장기 디플레이션, 심각한 고령화 및 인구 감소, 높은 정부 부채", strength_long: "핵심 소재 및 부품 기술력, 안정적인 금융 시스템", strength_critical: "초정밀 가공 및 소재 기술(소부장)", strength_powerful: "고품질 제조업 및 로봇 기술 경쟁력", relation_us: "우호적", relation_cn: "복합적" },
+    "IN": { name: "인도", continent: "아시아", population: "14억 4,171만", gdp: "4조 1,120억 달러", gni: "3조 8,910억 달러", gni_per_capita: "2,700 달러", debt: "GDP의 80%대", industry: "IT 서비스 및 소프트웨어, 제약, 농업, 저가 제조업", military_rank: 4, weakness: "부족한 인프라, 높은 빈부격차, 관료주의", strength_long: "거대한 젊은 인구, 세계적인 IT 아웃소싱 허브", strength_critical: "풍부하고 저렴한 고급 IT 인력", strength_powerful: "세계 최대 인구를 바탕으로 한 성장 잠재력", relation_us: "우호적", relation_cn: "적대적" },
+    "GB": { name: "영국", continent: "유럽", population: "6,796만", gdp: "3조 5,020억 달러", gni: "3조 5,880억 달러", gni_per_capita: "52,800 달러", debt: "GDP의 100% 상회", industry: "금융(런던), 법률, R&D, 제약, 항공우주", military_rank: 5, weakness: "브렉시트 후유증, 낮은 생산성, 지역 불균형", strength_long: "국제 금융 허브로서의 지위, 소프트 파워(언어, 문화)", strength_critical: "글로벌 금융 및 법률 서비스 경쟁력", strength_powerful: "강력한 금융 자본과 R&D 역량", relation_us: "우호적", relation_cn: "복합적" },
+    "FR": { name: "프랑스", continent: "유럽", population: "6,488만", gdp: "3조 1,820억 달러", gni: "3조 2,670억 달러", gni_per_capita: "50,360 달러", debt: "GDP의 110% 이상", industry: "항공우주, 명품, 관광, 원자력, 농업", military_rank: 11, weakness: "높은 실업률, 잦은 파업, 정부 주도 경제의 비효율성", strength_long: "독자적인 원자력 기술 및 항공우주 산업", strength_critical: "세계 최고 수준의 명품 브랜드 파워", strength_powerful: "에너지 자립도(원자력) 및 항공 기술", relation_us: "우호적", relation_cn: "복합적" },
+    "IT": { name: "이탈리아", continent: "유럽", population: "5,887만", gdp: "2조 3,190억 달러", gni: "2.3조 달러", gni_per_capita: "39,070 달러", debt: "GDP의 140% 이상", industry: "패션/디자인, 기계, 자동차, 관광, 식품", military_rank: 10, weakness: "높은 정부 부채, 남북 지역 격차, 정치적 불안정", strength_long: "장인정신 기반의 제조업 및 디자인 경쟁력", strength_critical: "세계적인 브랜드 파워를 가진 패션 및 소비재 산업", strength_powerful: "디자인 및 고품질 소비재 제조 능력", relation_us: "우호적", relation_cn: "복합적" },
+    "BR": { name: "브라질", continent: "남아메리카", population: "2억 1,763만", gdp: "2조 2,750억 달러", gni: "2.1조 달러", gni_per_capita: "9,670 달러", debt: "GDP의 75% 수준", industry: "농업(대두, 커피), 철광석 등 원자재, 항공기(Embraer)", military_rank: 12, weakness: "정치적 부패, 높은 범죄율, 인플레이션", strength_long: "풍부한 천연자원과 거대한 농업 생산 능력", strength_critical: "세계적인 농축산물 및 자원 공급 능력", strength_powerful: "자원 부국으로서의 잠재력", relation_us: "우호적", relation_cn: "우호적" },
+    "CA": { name: "캐나다", continent: "북아메리카", population: "4,106만", gdp: "2조 2,420억 달러", gni: "2.2조 달러", gni_per_capita: "53,570 달러", debt: "GDP의 100% 상회", industry: "원유, 천연가스 등 자원, 금융, AI 연구", military_rank: 25, weakness: "자원 산업에 대한 높은 의존도, 부동산 가격 급등", strength_long: "안정적인 정치 시스템과 풍부한 천연자원", strength_critical: "막대한 에너지 및 광물 자원", strength_powerful: "자원 개발 및 AI 기초 연구 역량", relation_us: "우호적", relation_cn: "복합적" },
+    "RU": { name: "러시아", continent: "유럽/아시아", population: "1억 4,395만", gdp: "2조 1,330억 달러", gni: "2.2조 달러", gni_per_capita: "15,290 달러", debt: "GDP의 20% 미만", industry: "석유, 천연가스, 무기, 원자력, 우주 기술", military_rank: 3, weakness: "서방 제재로 인한 경제 고립, 산업 다각화 부족", strength_long: "세계적인 에너지 자원 보유, 기초과학 및 군사 기술", strength_critical: "세계 에너지 시장에 대한 영향력", strength_powerful: "막대한 천연자원과 군사 기술력", relation_us: "적대적", relation_cn: "우호적" },
+    "AU": { name: "호주", continent: "오세아니아", population: "2,700만", gdp: "1조 7,890억 달러", gni: "1.8조 달러", gni_per_capita: "66,670 달러", debt: "GDP의 90% 수준", industry: "철광석, 석탄 등 광물, 농축산업, 금융, 교육", military_rank: 16, weakness: "중국 등 특정 국가에 대한 높은 자원 수출 의존도", strength_long: "풍부한 광물자원과 선진 농업 시스템", strength_critical: "핵심 광물(철광석, 리튬 등) 공급 능력", strength_powerful: "안정적인 자원 공급 국가로서의 지위", relation_us: "우호적", relation_cn: "복합적" },
+    "MX": { name: "멕시코", continent: "북아메리카", population: "1억 2,938만", gdp: "1조 6,590억 달러", gni: "1.6조 달러", gni_per_capita: "12,370 달러", debt: "GDP의 50% 수준", industry: "자동차 제조 및 부품, 석유, 관광, 농업", military_rank: 31, weakness: "마약 카르텔로 인한 치안 불안, 미국 경제에 대한 높은 의존도", strength_long: "북미 시장 접근성(USMCA), 젊은 노동 인구", strength_critical: "북미 자동차 산업의 핵심 생산 기지 역할", strength_powerful: "지정학적 이점을 활용한 제조업 경쟁력", relation_us: "우호적", relation_cn: "우호적" },
+    "KR": { name: "대한민국", continent: "아시아", population: "5,175만", gdp: "1조 7,840억 달러", gni: "1.8조 달러", gni_per_capita: "34,790 달러", debt: "GDP의 50% 상회", industry: "반도체, 자동차, 조선, 석유화학, IT/가전", military_rank: 6, weakness: "저출산/고령화, 자원 빈국, 수출 의존적 경제 구조", strength_long: "빠른 기술 습득 및 상용화 능력, 우수한 교육 인프라", strength_critical: "메모리 반도체 및 첨단 제조업 기술", strength_powerful: "세계 최고 수준의 반도체 생산 능력", relation_us: "우호적", relation_cn: "복합적" },
+    "ES": { name: "스페인", continent: "유럽", population: "4,751만", gdp: "1조 5,820억 달러", gni: "1.5조 달러", gni_per_capita: "31,570 달러", debt: "GDP의 110% 수준", industry: "관광, 자동차 부품, 신재생에너지(풍력, 태양광), 농업", military_rank: 20, weakness: "높은 청년 실업률, 지역 갈등(카탈루냐)", strength_long: "세계적인 관광 인프라와 문화 자산", strength_critical: "관광 산업 및 신재생에너지 기술", strength_powerful: "강력한 관광 서비스 경쟁력", relation_us: "우호적", relation_cn: "복합적" },
+    "ID": { name: "인도네시아", continent: "아시아", population: "2억 7,913만", gdp: "1조 4,170억 달러", gni: "1.3조 달러", gni_per_capita: "4,690 달러", debt: "GDP의 40% 수준", industry: "팜유, 석탄, 니켈 등 원자재, 디지털 경제", military_rank: 13, weakness: "부패, 부족한 인프라, 자연재해", strength_long: "풍부한 천연자원과 거대한 젊은 인구", strength_critical: "전기차 배터리 핵심 광물(니켈) 공급", strength_powerful: "자원 및 인구를 기반으로 한 성장 잠재력", relation_us: "우호적", relation_cn: "복합적" },
+    "NL": { name: "네덜란드", continent: "유럽", population: "1,799만", gdp: "1조 1,440억 달러", gni: "1.2조 달러", gni_per_capita: "66,950 달러", debt: "GDP의 50% 미만", industry: "물류/무역(로테르담항), 반도체 장비(ASML), 농업 기술", military_rank: 39, weakness: "해수면 상승에 대한 취약성, 높은 인구 밀도", strength_long: "지리적 이점을 활용한 중계 무역 및 물류 허브", strength_critical: "독점적인 반도체 노광장비 기술(ASML)", strength_powerful: "첨단 농업 기술과 물류 시스템", relation_us: "우호적", relation_cn: "복합적" },
+    "SA": { name: "사우디아라비아", continent: "아시아", population: "3,747만", gdp: "1조 1,060억 달러", gni: "1.1조 달러", gni_per_capita: "29,360 달러", debt: "GDP의 30% 미만", industry: "석유, 석유화학, 건설 (네옴시티 등)", military_rank: 23, weakness: "석유에 대한 극심한 의존도, 사회적 경직성", strength_long: "세계 최대의 원유 매장량 및 생산 능력", strength_critical: "국제 유가에 대한 막대한 영향력 (OPEC+)", strength_powerful: "압도적인 석유 생산 및 수출 능력", relation_us: "복합적", relation_cn: "우호적" },
+    "TR": { name: "튀르키예", continent: "아시아/유럽", population: "8,626만", gdp: "1조 0,290억 달러", gni: "9,800억 달러", gni_per_capita: "11,360 달러", debt: "GDP의 35% 수준", industry: "건설, 자동차, 방위산업, 관광", military_rank: 8, weakness: "만성적인 고물가(인플레이션), 정치적 불확실성", strength_long: "지정학적 요충지, 젊고 많은 인구", strength_critical: "유럽과 아시아를 잇는 지리적 이점 및 건설업 경쟁력", strength_powerful: "강력한 군사력 및 방위 산업", relation_us: "복합적", relation_cn: "복합적" },
+    "CH": { name: "스위스", continent: "유럽", population: "896만", gdp: "9,380억 달러", gni: "9,500억 달러", gni_per_capita: "105,000 달러", debt: "GDP의 40% 미만", industry: "금융(자산관리), 제약/바이오, 정밀기계(시계)", military_rank: 44, weakness: "강한 통화(스위스 프랑)로 인한 수출 경쟁력 압박", strength_long: "정치적 중립을 바탕으로 한 안정적인 금융 시스템", strength_critical: "글로벌 자산 관리 및 프라이빗 뱅킹", strength_powerful: "안정성과 신뢰를 바탕으로 한 금융 허브", relation_us: "우호적", relation_cn: "우호적" },
+    "PL": { name: "폴란드", continent: "유럽", population: "3,756만", gdp: "8,420억 달러", gni: "8,100억 달러", gni_per_capita: "21,570 달러", debt: "GDP의 50% 수준", industry: "자동차 부품, 가전, 배터리, 게임(CDPR)", military_rank: 21, weakness: "노동 인구 유출, 러시아와의 지정학적 긴장", strength_long: "유럽의 생산기지 역할, 우수한 IT 인력", strength_critical: "유럽 시장을 겨냥한 제조업 및 물류 허브", strength_powerful: "지리적 이점을 활용한 생산 및 물류 역량", relation_us: "우호적", relation_cn: "복합적" },
+    "SE": { name: "스웨덴", continent: "유럽", population: "1,067만", gdp: "6,490억 달러", gni: "6,600억 달러", gni_per_capita: "61,850 달러", debt: "GDP의 30% 수준", industry: "통신장비(에릭슨), 자동차(볼보), 가구(이케아), 스타트업", military_rank: 29, weakness: "높은 세금 부담, 부동산 시장 불안", strength_long: "높은 수준의 사회적 신뢰와 혁신 친화적 환경", strength_critical: "글로벌 경쟁력을 갖춘 기술 기업 및 스타트업 생태계", strength_powerful: "혁신 기술 및 디자인 경쟁력", relation_us: "우호적", relation_cn: "복합적" },
+    "BE": { name: "벨기에", continent: "유럽", population: "1,171만", gdp: "6,480억 달러", gni: "6,500억 달러", gni_per_capita: "55,510 달러", debt: "GDP의 105% 수준", industry: "화학, 제약, 물류(앤트워프항), 행정(EU 본부)", military_rank: 69, weakness: "언어권(플랑드르-왈롱) 갈등, 높은 정부 부채", strength_long: "유럽의 중심이라는 지리적 이점", strength_critical: "유럽연합(EU)의 행정수도 역할 및 물류 허브", strength_powerful: "유럽 내 물류 및 행정 중심지 기능", relation_us: "우호적", relation_cn: "복합적" },
+    "IE": { name: "아일랜드", continent: "유럽", population: "522만", gdp: "5,640억 달러", gni: "4,500억 달러", gni_per_capita: "86,210 달러", debt: "GDP의 40% 수준", industry: "IT(빅테크 유럽본부), 제약/바이오, 금융", military_rank: 90, weakness: "다국적 기업에 대한 높은 의존도, 주택난", strength_long: "낮은 법인세를 통한 외국인 투자 유치", strength_critical: "글로벌 빅테크 기업의 유럽 거점 역할", strength_powerful: "친기업 환경을 통한 외국 자본 유치 능력", relation_us: "우호적", relation_cn: "우호적" },
+    "NO": { name: "노르웨이", continent: "유럽", population: "551만", gdp: "5,490억 달러", gni: "5,600억 달러", gni_per_capita: "101,630 달러", debt: "GDP의 40% 수준", industry: "석유, 천연가스, 수산물, 해운", military_rank: 41, weakness: "석유 산업에 대한 높은 의존도, 높은 물가", strength_long: "북해 유전을 통한 막대한 국부펀드 운용", strength_critical: "안정적인 에너지 공급 및 국부펀드를 통한 미래 투자", strength_powerful: "지속가능한 국부 관리 능력", relation_us: "우호적", relation_cn: "복합적" },
+    "IL": { name: "이스라엘", continent: "아시아", population: "931만", gdp: "5,390억 달러", gni: "5,200억 달러", gni_per_capita: "55,850 달러", debt: "GDP의 60% 수준", industry: "첨단기술(사이버보안, AI), 방위산업, 다이아몬드 가공", military_rank: 17, weakness: "주변국과의 지정학적 갈등, 사회적 분열", strength_long: "정부-군-대학으로 이어지는 기술 창업 생태계(탈피오트)", strength_critical: "세계 최고 수준의 사이버 보안 및 첨단 기술력", strength_powerful: "생존을 위한 기술 개발 역량", relation_us: "우호적", relation_cn: "우호적" },
+    "AE": { name: "아랍에미리트", continent: "아시아", population: "959만", gdp: "5,280억 달러", gni: "5,100억 달러", gni_per_capita: "53,180 달러", debt: "GDP의 30% 수준", industry: "석유, 관광/항공(두바이), 물류, 금융", military_rank: 46, weakness: "석유 의존도, 외국인 노동력에 대한 높은 의존", strength_long: "중동의 금융 및 비즈니스 허브 역할", strength_critical: "자유로운 비즈니스 환경을 통한 중동 허브 기능", strength_powerful: "오일머니를 활용한 국가 브랜딩 및 인프라 구축", relation_us: "우호적", relation_cn: "우호적" },
+    "SG": { name: "싱가포르", continent: "아시아", population: "605만", gdp: "5,160억 달러", gni: "5,000억 달러", gni_per_capita: "82,640 달러", debt: "GDP의 160% 수준", industry: "금융, 무역, 물류, 정유, 바이오메디컬", military_rank: 30, weakness: "좁은 국토, 식량/물 자급률 낮음", strength_long: "동남아의 금융 및 물류 허브 지위", strength_critical: "안정적인 정치/사회 시스템과 지정학적 위치", strength_powerful: "세계 최고 수준의 금융 및 물류 인프라", relation_us: "우호적", relation_cn: "우호적" },
+    "TH": { name: "태국", continent: "아시아", population: "7,184만", gdp: "5,120억 달러", gni: "5,000억 달러", gni_per_capita: "6,960 달러", debt: "GDP의 60% 수준", industry: "관광, 자동차 부품, 전자제품 조립, 농업", military_rank: 26, weakness: "정치적 불안정, 고령화, 교육 경쟁력 약화", strength_long: "동남아의 관광 허브 및 제조업 기지", strength_critical: "매력적인 관광 자원과 외국인 친화적 문화", strength_powerful: "강력한 관광 산업 경쟁력", relation_us: "우호적", relation_cn: "우호적" },
+    "AR": { name: "아르헨티나", continent: "남아메리카", population: "4,577만", gdp: "6,550억 달러", gni: "6,400억 달러", gni_per_capita: "13,980 달러", debt: "GDP의 85% 수준", industry: "농업(대두, 옥수수), 축산업, 리튬", military_rank: 38, weakness: "만성적인 인플레이션, 잦은 디폴트, 포퓰리즘", strength_long: "광활한 토지를 기반으로 한 농축산업 잠재력", strength_critical: "세계적인 곡물 및 육류 생산 능력", strength_powerful: "풍부한 농업 및 광물 자원", relation_us: "우호적", relation_cn: "우호적" },
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    // DOM Element references
+    const mapContainer = document.getElementById('map-container');
+    const tooltip = document.getElementById('tooltip');
+    const closeTooltipBtn = document.getElementById('close-tooltip');
+    const tooltipContent = document.getElementById('tooltip-content');
+    const countryList = document.getElementById('country-list');
+    const sortContainer = document.getElementById('sort-container');
+
+    // State variables
+    let activeCountryId = null;
+    let currentSort = 'rank'; // 'rank', 'gdp', 'population', 'military'
+
+    // Fetch and inject SVG map
+    fetch('https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg')
+        .then(response => response.text())
+        .then(svgData => {
+            document.getElementById('map-placeholder').style.display = 'none';
+            mapContainer.insertAdjacentHTML('afterbegin', svgData);
+            const svg = mapContainer.querySelector('svg');
+            setupMap(svg);
+        })
+        .catch(error => {
+            console.error('Error loading map:', error);
+            document.getElementById('map-placeholder').innerHTML = '<p class="text-red-500">지도를 불러오는데 실패했습니다.</p>';
+        });
+        
+    const setupMap = (svg) => {
+        if (!svg) return;
+        svg.setAttribute('class', 'w-full h-full');
+        svg.querySelectorAll('path').forEach(path => {
+            path.classList.add('country-path');
+            const countryId = path.getAttribute('id');
+            if (countryData[countryId]) {
+                path.classList.add('top-country');
+                path.setAttribute('tabindex', '0'); // For keyboard navigation
+                path.setAttribute('role', 'button');
+                path.setAttribute('aria-label', countryData[countryId].name);
+
+                path.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showTooltip(countryId, e.clientX, e.clientY);
+                });
+                path.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        showTooltip(countryId); // Center tooltip for keyboard users
+                    }
+                });
+            }
+        });
+    };
+
+    // --- Sorting Logic ---
+    const parseUnitString = (str, unit1, unit1Val, unit2, unit2Val) => {
+        let num = 0;
+        if (!str) return num;
+        str = str.replace(/,/g, '').trim();
+        if (str.includes(unit1)) {
+            const parts = str.split(unit1);
+            num += parseFloat(parts[0] || 0) * unit1Val;
+            str = parts[1];
+        }
+        if (str.includes(unit2)) {
+            str = str.split(unit2)[0];
+            num += parseFloat(str || 0);
+        }
+        return num;
+    };
+
+    const parseGDP = (gdpStr) => {
+        return parseUnitString(gdpStr, '조', 10000, '억', 1);
+    };
+
+    const parsePopulation = (popStr) => {
+        return parseUnitString(popStr, '억', 10000, '만', 1);
+    };
+
+    const renderCountryList = () => {
+        const countriesArray = Object.entries(countryData);
+
+        countriesArray.sort((a, b) => {
+            const [idA, dataA] = a;
+            const [idB, dataB] = b;
+            switch (currentSort) {
+                case 'gdp':
+                    return parseGDP(b[1].gdp) - parseGDP(a[1].gdp);
+                case 'population':
+                    return parsePopulation(b[1].population) - parsePopulation(a[1].population);
+                case 'military':
+                    return dataA.military_rank - dataB.military_rank;
+                case 'rank':
+                default:
+                    const allKeys = Object.keys(countryData);
+                    return allKeys.indexOf(idA) - allKeys.indexOf(idB);
+            }
+        });
+
+        countryList.innerHTML = ''; // 기존 목록 초기화
+        countriesArray.forEach(([id, data]) => {
+            const li = document.createElement('li');
+            const originalRank = Object.keys(countryData).indexOf(id) + 1;
+            let displayPrefix = (currentSort === 'rank') 
+                ? `${originalRank}. ` 
+                : `<span class="inline-block text-center w-6 mr-1 text-xs text-gray-400">(${originalRank})</span>`;
+
+            li.innerHTML = `${displayPrefix}<span>${data.name}</span>`;
+            li.dataset.countryId = id;
+            li.className = 'p-2 rounded-md cursor-pointer transition-colors duration-200 country-list-item flex items-center';
+            li.setAttribute('role', 'button');
+            li.setAttribute('tabindex', '0');
+
+            li.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showTooltip(id);
+            });
+            li.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    showTooltip(id);
+                }
+            });
+            countryList.appendChild(li);
+        });
+    };
+
+    sortContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('sort-btn')) {
+            currentSort = e.target.dataset.sort;
+            sortContainer.querySelector('.active')?.classList.remove('active');
+            e.target.classList.add('active');
+            renderCountryList();
+        }
+    });
+
+    const formatContent = (data) => {
+        const iconClass = "w-5 h-5 inline-block mr-2 text-indigo-600";
+        
+        const getRelationClass = (relation) => {
+            switch(relation) {
+                case '우호적': return 'text-blue-600 font-bold';
+                case '적대적': return 'text-red-600 font-bold';
+                case '복합적': return 'text-gray-600 font-bold';
+                default: return 'font-bold';
+            }
+        };
+
+        return `
+        <div class="space-y-4">
+            <h3 class="text-2xl font-bold text-indigo-700">${data.name} <span class="text-lg font-medium text-gray-600">(${data.continent})</span></h3>
+            
+            <div>
+                <h4 class="font-semibold text-lg border-b-2 border-indigo-100 pb-1 mb-2 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="${iconClass}" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg>
+                    주요 경제 지표
+                </h4>
+                <ul class="space-y-1.5 text-gray-700 pl-2 text-base">
+                    <li class="flex items-center"><strong>총인구수:</strong><span class="ml-auto font-mono">${data.population}</span></li>
+                    <li class="flex items-center"><strong>GDP (명목):</strong><span class="ml-auto font-mono">${data.gdp}</span></li>
+                    <li class="flex items-center"><strong>GNI:</strong><span class="ml-auto font-mono">${data.gni}</span></li>
+                    <li class="flex items-center"><strong>1인당 GNI:</strong><span class="ml-auto font-mono">${data.gni_per_capita}</span></li>
+                    <li class="flex items-center"><strong>국가 채무:</strong><span class="ml-auto font-mono">${data.debt}</span></li>
+                </ul>
+            </div>
+            
+            <div>
+                <h4 class="font-semibold text-lg border-b-2 border-indigo-100 pb-1 mb-2 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="${iconClass}" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L7.18 7.93l-4.95.72c-1.63.24-2.28 2.23-1.09 3.43l3.58 3.49-1.07 4.93c-.28 1.61 1.42 2.85 2.87 2.11l4.43-2.33 4.43 2.33c1.45.74 3.15-.5 2.87-2.11l-1.07-4.93 3.58-3.49c1.19-1.2 1.54-3.19-1.09-3.43l-4.95-.72L11.49 3.17z" clip-rule="evenodd" /></svg>
+                    핵심 역량
+                </h4>
+                <ul class="space-y-1.5 text-gray-700 pl-2">
+                    <li><strong>핵심 산업/기술:</strong> ${data.industry}</li>
+                    <li><strong>세계 군사력 순위:</strong> ${data.military_rank}위</li>
+                </ul>
+            </div>
+
+            <div>
+                <h4 class="font-semibold text-lg border-b-2 border-indigo-100 pb-1 mb-2 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="${iconClass}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+                    지정학적 관계
+                </h4>
+                <ul class="space-y-1.5 text-gray-700 pl-2">
+                    <li><strong>對미국 관계:</strong> <span class="${getRelationClass(data.relation_us)}">${data.relation_us}</span></li>
+                    <li><strong>對중국 관계:</strong> <span class="${getRelationClass(data.relation_cn)}">${data.relation_cn}</span></li>
+                </ul>
+            </div>
+            
+            <div>
+                <h4 class="font-semibold text-lg border-b-2 border-indigo-100 pb-1 mb-2 flex items-center">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="${iconClass}" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" /></svg>
+                    SWOT 분석
+                </h4>
+                <ul class="space-y-1.5 text-gray-700 pl-2">
+                    <li class="flex items-start"><strong class="text-red-600 mr-2 shrink-0">취약점:</strong> <span class="text-red-600">${data.weakness}</span></li>
+                    <li class="flex items-start"><strong class="text-blue-600 mr-2 shrink-0">장기적 강점:</strong> <span class="text-blue-600">${data.strength_long}</span></li>
+                    <li class="flex items-start"><strong class="text-green-700 mr-2 shrink-0">필수/최강 능력:</strong> <span class="text-green-700 font-bold">${data.strength_powerful}</span></li>
+                </ul>
+            </div>
+        </div>
+        `;
+    };
+    
+    const showTooltip = (countryId, clickX, clickY) => {
+        if (!countryData[countryId]) return;
+
+        if (activeCountryId) {
+            mapContainer.querySelector(`#${activeCountryId}`)?.classList.remove('active-country');
+            countryList.querySelector(`[data-country-id="${activeCountryId}"]`)?.classList.remove('active-list-item');
+        }
+
+        activeCountryId = countryId;
+        mapContainer.querySelector(`#${countryId}`)?.classList.add('active-country');
+        const activeListItem = countryList.querySelector(`[data-country-id="${countryId}"]`);
+        if (activeListItem) {
+            activeListItem.classList.add('active-list-item');
+            activeListItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        tooltipContent.innerHTML = formatContent(countryData[countryId]);
+        tooltip.classList.remove('hidden');
+
+        const isMobile = window.innerWidth < 768;
+
+        if (clickX && clickY && !isMobile) {
+            const mapRect = mapContainer.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            let top = clickY - mapRect.top - (tooltipRect.height / 2);
+            let left = clickX - mapRect.left + 20;
+
+            if (left + tooltipRect.width > mapRect.width) left = clickX - mapRect.left - tooltipRect.width - 20;
+            if (top + tooltipRect.height > mapRect.height) top = mapRect.height - tooltipRect.height - 10;
+            if (top < 0) top = 10;
+            if (left < 0) left = 10;
+
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+            tooltip.style.transform = 'none';
+        } else {
+            tooltip.style.top = '50%';
+            tooltip.style.left = '50%';
+            tooltip.style.transform = 'translate(-50%, -50%)';
+        }
+    };
+    
+    const hideTooltip = () => {
+        tooltip.classList.add('hidden');
+        if (activeCountryId) {
+            mapContainer.querySelector(`#${activeCountryId}`)?.classList.remove('active-country');
+            countryList.querySelector(`[data-country-id="${activeCountryId}"]`)?.classList.remove('active-list-item');
+            activeCountryId = null;
+        }
+    };
+    
+    // Event Listeners
+    closeTooltipBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideTooltip();
+    });
+    
+    document.addEventListener('click', (e) => {
+        if (!tooltip.contains(e.target) && !e.target.closest('.top-country') && !e.target.closest('.country-list-item')) {
+            hideTooltip();
+        }
+    });
+
+    // Initial render
+    renderCountryList();
+});
+</script>
+</body>
+</html>
